@@ -54,6 +54,8 @@
 #include "rx/ibus.h"
 #include "rx/nrf24.h"
 
+#include "sensors/battery.h"
+
 #include "rx/rx.h"
 
 //#define DEBUG_RX_SIGNAL_LOSS
@@ -90,6 +92,9 @@ uint32_t rcInvalidPulsPeriod[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 rxRuntimeConfig_t rxRuntimeConfig;
 static rxConfig_t *rxConfig;
 static uint8_t rcSampleIndex = 0;
+
+static uint8_t batteryVirtualAuxChannel;
+static uint8_t batteryVirtualAuxEnabled = 0;
 
 static uint16_t nullReadRawRC(rxRuntimeConfig_t *rxRuntimeConfig, uint8_t channel) {
     UNUSED(rxRuntimeConfig);
@@ -205,6 +210,15 @@ void rxInit(rxConfig_t *rxConfig, modeActivationCondition_t *modeActivationCondi
         rxPwmInit(&rxRuntimeConfig, &rcReadRawFunc);
     }
 #endif
+
+#if defined(NAZE) || defined(SPRACINGF3)
+    if (feature(FEATURE_RX_PPM) && feature(FEATURE_VBAT) && rxRuntimeConfig.channelCount < (MAX_SUPPORTED_RC_CHANNEL_COUNT -1)) {
+        batteryVirtualAuxChannel = rxRuntimeConfig.channelCount;
+        batteryVirtualAuxEnabled = 1;
+        rxRuntimeConfig.channelCount++;
+    }
+#endif
+
     rxRuntimeConfig.auxChannelCount = rxRuntimeConfig.channelCount - STICK_CHANNEL_COUNT;
 }
 
@@ -477,8 +491,15 @@ STATIC_UNIT_TESTED uint16_t applyRxChannelRangeConfiguraton(int sample, rxChanne
 static void readRxChannelsApplyRanges(void)
 {
     uint8_t channel;
+    uint8_t channelsToReadFromRx;
 
-    for (channel = 0; channel < rxRuntimeConfig.channelCount; channel++) {
+    if (batteryVirtualAuxEnabled) {
+        channelsToReadFromRx = rxRuntimeConfig.channelCount - 1;
+    } else {
+        channelsToReadFromRx = rxRuntimeConfig.channelCount;
+    }
+
+    for (channel = 0; channel < channelsToReadFromRx; channel++) {
 
         uint8_t rawChannel = calculateChannelRemapping(rxConfig->rcmap, REMAPPABLE_CHANNEL_COUNT, channel);
 
@@ -501,6 +522,7 @@ static void detectAndApplySignalLossBehaviour(void)
     bool useValueFromRx = true;
     bool rxIsDataDriven = isRxDataDriven();
     uint32_t currentMilliTime = millis();
+    uint8_t channelsToProcess;
 
     if (!rxIsDataDriven) {
         rxSignalReceived = rxSignalReceivedNotDataDriven;
@@ -519,7 +541,14 @@ static void detectAndApplySignalLossBehaviour(void)
 
     rxResetFlightChannelStatus();
 
-    for (channel = 0; channel < rxRuntimeConfig.channelCount; channel++) {
+    if (batteryVirtualAuxEnabled) {
+        channelsToProcess = rxRuntimeConfig.channelCount - 1;
+        rcData[batteryVirtualAuxChannel] = constrain(scaleRange((uint16_t) (vbat * 10 / batteryCellCount), 300, 420, PWM_RANGE_MIN, PWM_RANGE_MAX), PWM_RANGE_MIN, PWM_RANGE_MAX);
+    } else {
+        channelsToProcess = rxRuntimeConfig.channelCount;
+    }
+
+    for (channel = 0; channel < channelsToProcess; channel++) {
 
         sample = (useValueFromRx) ? rcRaw[channel] : PPM_RCVR_TIMEOUT;
 
@@ -551,7 +580,7 @@ static void detectAndApplySignalLossBehaviour(void)
         rxIsInFailsafeMode = rxIsInFailsafeModeNotDataDriven = true;
         failsafeOnValidDataFailed();
 
-        for (channel = 0; channel < rxRuntimeConfig.channelCount; channel++) {
+        for (channel = 0; channel < channelsToProcess; channel++) {
             rcData[channel] = getRxfailValue(channel);
         }
     }
@@ -595,12 +624,12 @@ void updateRSSIPWM(void)
     int16_t pwmRssi = 0;
     // Read value of AUX channel as rssi
     pwmRssi = rcData[rxConfig->rssi_channel - 1];
-	
-	// RSSI_Invert option	
+
+	// RSSI_Invert option
 	if (rxConfig->rssi_ppm_invert) {
 	    pwmRssi = ((2000 - pwmRssi) + 1000);
 	}
-	
+
     // Range of rawPwmRssi is [1000;2000]. rssi should be in [0;1023];
     rssi = (uint16_t)((constrain(pwmRssi - 1000, 0, 1000) / 1000.0f) * 1023.0f);
 }
@@ -655,4 +684,3 @@ void updateRSSI(uint32_t currentTime)
 void initRxRefreshRate(uint16_t *rxRefreshRatePtr) {
     *rxRefreshRatePtr = rxRefreshRate;
 }
-
