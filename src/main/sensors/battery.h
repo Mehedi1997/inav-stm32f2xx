@@ -76,3 +76,5 @@ int32_t currentMeterToCentiamps(uint16_t src);
 
 uint8_t calculateBatteryPercentage(void);
 uint8_t calculateBatteryCapacityRemainingPercentage(void);
+
+void updateBatteryMinVoltage(uint32_t timestamp);

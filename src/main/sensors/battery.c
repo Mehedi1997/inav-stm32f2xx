@@ -35,6 +35,7 @@
 
 #include "io/rc_controls.h"
 #include "io/beeper.h"
+#include "debug.h"
 
 #define VBATT_PRESENT_THRESHOLD_MV    10
 #define VBATT_LPF_FREQ  1
@@ -52,6 +53,11 @@ int32_t amperage = 0;               // amperage read by current sensor in centia
 int32_t mAhDrawn = 0;               // milliampere hours drawn from the battery since start
 
 batteryConfig_t *batteryConfig;
+
+#define BATTERY_MIN_VOLTAGE_PERIOD 1000000
+
+uint32_t batteryMinVoltagePreviousTime = 0;
+uint16_t batteryMinVoltage;
 
 static batteryState_e batteryState;
 
@@ -77,17 +83,35 @@ static void updateBatteryVoltage(uint32_t vbatTimeDelta)
 /* Batt Hysteresis of +/-100mV */
 #define VBATT_HYSTERESIS 1
 
+void updateBatteryMinVoltage(uint32_t timestamp)
+{
+    static filterStatePt1_t minVoltageFilter;
+
+    if (timestamp - batteryMinVoltagePreviousTime >= BATTERY_MIN_VOLTAGE_PERIOD) {
+
+        if (batteryMinVoltage == 0) {
+            filterResetPt1(&minVoltageFilter, batteryAdcToVoltage(vbatLatestADC));
+        }
+
+        batteryMinVoltage = filterApplyPt1(vbat, &minVoltageFilter, 0.1f, BATTERY_MIN_VOLTAGE_PERIOD / 1000000);
+        batteryMinVoltagePreviousTime = timestamp;
+
+        debug[0] = batteryMinVoltage;
+        debug[1] = vbat;
+    }
+}
+
 void updateBattery(uint32_t vbatTimeDelta)
 {
     updateBatteryVoltage(vbatTimeDelta);
-    
+
     /* battery has just been connected*/
     if (batteryState == BATTERY_NOT_PRESENT && vbat > VBATT_PRESENT_THRESHOLD_MV)
     {
         /* Actual battery state is calculated below, this is really BATTERY_PRESENT */
         batteryState = BATTERY_OK;
         /* wait for VBatt to stabilise then we can calc number of cells
-        (using the filtered value takes a long time to ramp up) 
+        (using the filtered value takes a long time to ramp up)
         We only do this on the ground so don't care if we do block, not
         worse than original code anyway*/
         delay(VBATTERY_STABLE_DELAY);
@@ -109,7 +133,7 @@ void updateBattery(uint32_t vbatTimeDelta)
         batteryCellCount = 0;
         batteryWarningVoltage = 0;
         batteryCriticalVoltage = 0;
-    }    
+    }
 
     switch(batteryState)
     {
