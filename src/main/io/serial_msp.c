@@ -143,7 +143,8 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT + 1] = {
     { BOXGCSNAV, "GCS NAV;", 31 },
     { BOXHEADINGLOCK, "HEADING LOCK;", 32 },
     { BOXSURFACE, "SURFACE;", 33 },
-    { BOXFLAPERON, "FLAPERON;", 34 },
+    { BOXRATESTAB, "RATE STABILISED;", 34},
+    { BOXFLAPERON, "FLAPERON;", 35 },
     { CHECKBOX_ITEM_COUNT, NULL, 0xFF }
 };
 
@@ -408,6 +409,7 @@ void mspInit(void)
     if (sensors(SENSOR_ACC)) {
         activeBoxIds[activeBoxIdCount++] = BOXANGLE;
         activeBoxIds[activeBoxIdCount++] = BOXHORIZON;
+        activeBoxIds[activeBoxIdCount++] = BOXRATESTAB;
     }
 
     activeBoxIds[activeBoxIdCount++] = BOXAIRMODE;
@@ -497,6 +499,7 @@ static uint32_t packFlightModeFlags(void)
     junk = 0;
     tmp = IS_ENABLED(FLIGHT_MODE(ANGLE_MODE)) << BOXANGLE |
         IS_ENABLED(FLIGHT_MODE(HORIZON_MODE)) << BOXHORIZON |
+        IS_ENABLED(FLIGHT_MODE(RATE_STAB_MODE)) << BOXRATESTAB |
         IS_ENABLED(FLIGHT_MODE(MAG_MODE)) << BOXMAG |
         IS_ENABLED(FLIGHT_MODE(HEADFREE_MODE)) << BOXHEADFREE |
         IS_ENABLED(IS_RC_MODE_ACTIVE(BOXHEADADJ)) << BOXHEADADJ |

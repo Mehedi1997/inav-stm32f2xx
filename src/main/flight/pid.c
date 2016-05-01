@@ -67,8 +67,11 @@ typedef struct {
     float errorGyroIf;
     float errorGyroIfLimit;
 
-    // Axis lock accumulator
+    // Axis lock accumulator (YAW axis)
     float axisLockAccum;
+
+    // Rate+Stabilised accumulator (ROLL/PITCH)
+    float rateStabilisedAccum;
 
     // Used for ANGLE filtering
     pt1Filter_t angleFilterState;
@@ -115,6 +118,12 @@ void pidResetErrorAccumulators(void)
 
     // Reset yaw heading lock accumulator
     pidState[FD_YAW].axisLockAccum = 0;
+}
+
+void pidSetupRateStabilisedMode(void)
+{
+    pidState[FD_ROLL].rateStabilisedAccum = attitude.raw[FD_ROLL];
+    pidState[FD_PITCH].rateStabilisedAccum = attitude.raw[FD_PITCH];
 }
 
 static float pidRcCommandToAngle(int16_t stick, int16_t maxInclination)
@@ -249,9 +258,24 @@ static float calcHorizonRateMagnitude(const pidProfile_t *pidProfile, const rxCo
 static void pidLevel(const pidProfile_t *pidProfile, const controlRateConfig_t *controlRateConfig, pidState_t *pidState, flight_dynamics_index_t axis, float horizonRateMagnitude)
 {
     // This is ROLL/PITCH, run ANGLE/HORIZON controllers
-    const float angleTarget = pidRcCommandToAngle(rcCommand[axis], pidProfile->max_angle_inclination[axis]);
-    const float angleError = angleTarget - attitude.raw[axis];
+    float angleTarget;
 
+    if (FLIGHT_MODE(RATE_STAB_MODE)) { // Rate+Stabilised mode - sticks control rate
+        // [rateTarget] = [deg/s]
+        // [angleTarget] = [deg * 10]
+        // [rateStabilisedAccum] = [deg * 10]
+
+        // Integrate stick rate input to yield angle
+        pidState->rateStabilisedAccum += DEGREES_TO_DECIDEGREES(pidState->rateTarget * dT);
+        pidState->rateStabilisedAccum = constrainf(pidState->rateStabilisedAccum, -pidProfile->max_angle_inclination[axis], +pidProfile->max_angle_inclination[axis]);
+        angleTarget = pidState->rateStabilisedAccum;
+    }
+    else {
+        // ANGLE or HORIZON_MODE - target attitude is controlled directly by a stick
+        angleTarget = pidRcCommandToAngle(rcCommand[axis], pidProfile->max_angle_inclination[axis]);
+    }
+
+    const float angleError = angleTarget - attitude.raw[axis];
     float angleRateTarget = constrainf(angleError * (pidProfile->P8[PIDLEVEL] / FP_PID_LEVEL_P_MULTIPLIER), -controlRateConfig->rates[axis] * 10.0f, controlRateConfig->rates[axis] * 10.0f);
 
     // Apply simple LPF to angleRateTarget to make response less jerky
@@ -465,7 +489,7 @@ void pidController(const pidProfile_t *pidProfile, const controlRateConfig_t *co
     }
 
     // Step 3: Run control for ANGLE_MODE, HORIZON_MODE, and HEADING_LOCK
-    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE)) {
+    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE) || FLIGHT_MODE(RATE_STAB_MODE)) {
         const float horizonRateMagnitude = calcHorizonRateMagnitude(pidProfile, rxConfig);
         pidLevel(pidProfile, controlRateConfig, &pidState[FD_ROLL], FD_ROLL, horizonRateMagnitude);
         pidLevel(pidProfile, controlRateConfig, &pidState[FD_PITCH], FD_PITCH, horizonRateMagnitude);

@@ -359,11 +359,11 @@ void processRx(void)
         processRcAdjustments(currentControlRateProfile, &masterConfig.rxConfig);
     }
 
-    bool canUseHorizonMode = true;
+    bool canUseHorizonOrStabilisedMode = true;
 
     if ((IS_RC_MODE_ACTIVE(BOXANGLE) || (feature(FEATURE_FAILSAFE) && failsafeIsActive()) || naivationRequiresAngleMode()) && sensors(SENSOR_ACC)) {
         // bumpless transfer to Level mode
-        canUseHorizonMode = false;
+        canUseHorizonOrStabilisedMode = false;
 
         if (!FLIGHT_MODE(ANGLE_MODE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
@@ -372,9 +372,11 @@ void processRx(void)
         DISABLE_FLIGHT_MODE(ANGLE_MODE); // failsafe support
     }
 
-    if (IS_RC_MODE_ACTIVE(BOXHORIZON) && canUseHorizonMode) {
+    // Horizon mode
+    if (IS_RC_MODE_ACTIVE(BOXHORIZON) && canUseHorizonOrStabilisedMode) {
 
         DISABLE_FLIGHT_MODE(ANGLE_MODE);
+        DISABLE_FLIGHT_MODE(RATE_STAB_MODE);
 
         if (!FLIGHT_MODE(HORIZON_MODE)) {
             ENABLE_FLIGHT_MODE(HORIZON_MODE);
@@ -383,7 +385,22 @@ void processRx(void)
         DISABLE_FLIGHT_MODE(HORIZON_MODE);
     }
 
-    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE)) {
+    // Rate + stabilised mode
+    if (IS_RC_MODE_ACTIVE(BOXRATESTAB) && canUseHorizonOrStabilisedMode) {
+
+        DISABLE_FLIGHT_MODE(ANGLE_MODE);
+        DISABLE_FLIGHT_MODE(HORIZON_MODE);
+
+        if (!FLIGHT_MODE(RATE_STAB_MODE)) {
+            ENABLE_FLIGHT_MODE(RATE_STAB_MODE);
+            pidSetupRateStabilisedMode();
+        }
+    } else {
+        DISABLE_FLIGHT_MODE(RATE_STAB_MODE);
+    }
+
+
+    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE) || FLIGHT_MODE(RATE_STAB_MODE)) {
         LED1_ON;
     } else {
         LED1_OFF;
@@ -584,7 +601,7 @@ void taskMainPidLoop(void)
         if (navigationRequiresThrottleTiltCompensation()) {
             thrTiltCompStrength = 100;
         }
-        else if (currentProfile->throttle_tilt_compensation_strength && (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE))) {
+        else if (currentProfile->throttle_tilt_compensation_strength && (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE) || FLIGHT_MODE(RATE_STAB_MODE))) {
             thrTiltCompStrength = currentProfile->throttle_tilt_compensation_strength;
         }
 
