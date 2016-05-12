@@ -78,3 +78,4 @@ uint8_t calculateBatteryPercentage(void);
 uint8_t calculateBatteryCapacityRemainingPercentage(void);
 
 void updateBatteryMinVoltage(uint32_t timestamp);
+uint16_t getBatteryMinVoltage();

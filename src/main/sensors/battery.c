@@ -83,14 +83,28 @@ static void updateBatteryVoltage(uint32_t vbatTimeDelta)
 /* Batt Hysteresis of +/-100mV */
 #define VBATT_HYSTERESIS 1
 
+static filterStatePt1_t minVoltageFilter;
+
+uint16_t getBatteryMinVoltage()
+{
+    return batteryMinVoltage;
+}
+
+void resetBatteryMinVoltage()
+{
+    uint16_t rawVoltage = batteryAdcToVoltage(vbatLatestADC);
+
+    filterResetPt1(&minVoltageFilter, rawVoltage);
+    batteryMinVoltage = rawVoltage;
+}
+
 void updateBatteryMinVoltage(uint32_t timestamp)
 {
-    static filterStatePt1_t minVoltageFilter;
 
     if (timestamp - batteryMinVoltagePreviousTime >= BATTERY_MIN_VOLTAGE_PERIOD) {
 
         if (batteryMinVoltage == 0) {
-            filterResetPt1(&minVoltageFilter, batteryAdcToVoltage(vbatLatestADC));
+            resetBatteryMinVoltage();
         }
 
         batteryMinVoltage = filterApplyPt1(vbat, &minVoltageFilter, 0.1f, BATTERY_MIN_VOLTAGE_PERIOD / 1000000);

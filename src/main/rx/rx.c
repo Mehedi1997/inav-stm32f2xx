@@ -543,7 +543,7 @@ static void detectAndApplySignalLossBehaviour(void)
 
     if (batteryVirtualAuxEnabled) {
         channelsToProcess = rxRuntimeConfig.channelCount - 1;
-        rcData[batteryVirtualAuxChannel] = constrain(scaleRange((uint16_t) (vbat * 10 / batteryCellCount), 300, 420, PWM_RANGE_MIN, PWM_RANGE_MAX), PWM_RANGE_MIN, PWM_RANGE_MAX);
+        rcData[batteryVirtualAuxChannel] = constrain(scaleRange((uint16_t) (getBatteryMinVoltage() * 10 / batteryCellCount), 300, 420, PWM_RANGE_MIN, PWM_RANGE_MAX), PWM_RANGE_MIN, PWM_RANGE_MAX);
     } else {
         channelsToProcess = rxRuntimeConfig.channelCount;
     }
