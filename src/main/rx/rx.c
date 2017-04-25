@@ -80,9 +80,6 @@ uint32_t rcInvalidPulsPeriod[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 #define MAX_INVALID_PULS_TIME    300
 #define PPM_AND_PWM_SAMPLE_COUNT 3
 
-#define DELAY_50_HZ (1000000 / 50)
-#define DELAY_10_HZ (1000000 / 10)
-#define DELAY_5_HZ (1000000 / 5)
 #define SKIP_RC_ON_SUSPEND_PERIOD 1500000           // 1.5 second period in usec (call frequency independent)
 #define SKIP_RC_SAMPLES_ON_RESUME  2                // flush 2 samples to drop wrong measurements (timing independent)
 
@@ -216,6 +213,7 @@ void rxInit(void)
     rxRuntimeConfig.rcReadRawFn = nullReadRawRC;
     rxRuntimeConfig.rcFrameStatusFn = nullFrameStatus;
     rxRuntimeConfig.rxSignalTimeout = DELAY_10_HZ;
+    rxRuntimeConfig.requireFiltering = false;
     rcSampleIndex = 0;
 
     for (int i = 0; i < MAX_SUPPORTED_RC_CHANNEL_COUNT; i++) {
@@ -254,7 +252,6 @@ void rxInit(void)
 #ifdef USE_RX_MSP
     if (feature(FEATURE_RX_MSP)) {
         rxMspInit(rxConfig(), &rxRuntimeConfig);
-        rxRuntimeConfig.rxSignalTimeout = DELAY_5_HZ;
     }
 #endif
 
@@ -272,7 +269,6 @@ void rxInit(void)
 #if defined(USE_RX_PWM) || defined(USE_RX_PPM)
     if (feature(FEATURE_RX_PPM) || feature(FEATURE_RX_PARALLEL_PWM)) {
         rxPwmInit(rxConfig(), &rxRuntimeConfig);
-        rxRuntimeConfig.rxSignalTimeout = DELAY_10_HZ;
     }
 #endif
 }
@@ -293,11 +289,6 @@ bool rxIsReceivingSignal(void)
 bool rxAreFlightChannelsValid(void)
 {
     return rxFlightChannelsValid;
-}
-
-static bool isRxDataDriven(void)
-{
-    return !(feature(FEATURE_RX_PARALLEL_PWM | FEATURE_RX_PPM));
 }
 
 void suspendRxSignal(void)
@@ -322,7 +313,7 @@ bool rxUpdateCheck(timeUs_t currentTimeUs, timeDelta_t currentDeltaTime)
         rxLastValidFrameTimeUs = currentTimeUs;
     }
     else {  // RX_FRAME_PENDING
-        // Check for valid signal timeout
+        // Check for valid signal timeout - if we are RX_FRAME_PENDING for too long assume signall loss
         if ((currentTimeUs - rxLastValidFrameTimeUs) >= rxRuntimeConfig.rxSignalTimeout) {
             rxSignalReceived = false;
         }
@@ -331,7 +322,7 @@ bool rxUpdateCheck(timeUs_t currentTimeUs, timeDelta_t currentDeltaTime)
     return rxDataReceived || ((int32_t)(currentTimeUs - rxLastUpdateTimeUs) >= 0); // data driven or 50Hz
 }
 
-static uint16_t calculateNonDataDrivenChannel(uint8_t chan, uint16_t sample)
+static uint16_t applyChannelFiltering(uint8_t chan, uint16_t sample)
 {
     static int16_t rcSamples[MAX_SUPPORTED_RX_PARALLEL_PWM_OR_PPM_CHANNEL_COUNT][PPM_AND_PWM_SAMPLE_COUNT];
     static int16_t rcDataMean[MAX_SUPPORTED_RX_PARALLEL_PWM_OR_PPM_CHANNEL_COUNT];
@@ -391,10 +382,10 @@ void calculateRxChannelsAndUpdateFailsafe(timeUs_t currentTimeUs)
         }
 
         // Update rcData channel value
-        if (isRxDataDriven()) {
+        if (rxRuntimeConfig.requireFiltering) {
             rcData[channel] = sample;
         } else {
-            rcData[channel] = calculateNonDataDrivenChannel(channel, sample);
+            rcData[channel] = applyChannelFiltering(channel, sample);
         }
     }
 
