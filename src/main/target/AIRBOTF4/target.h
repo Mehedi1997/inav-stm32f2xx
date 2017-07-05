@@ -111,6 +111,10 @@
 #define I2C_DEVICE              (I2CDEV_2)
 #define I2C_DEVICE_SHARES_UART3
 
+#define USE_RANGEFINDER
+#define USE_RANGEFINDER_HCSR04_I2C
+#define RANGEFINDER_HCSR04_I2C_I2C_INSTANCE (I2C_DEVICE)
+
 #define USE_ADC
 #define ADC_CHANNEL_1_PIN               PC1
 #define ADC_CHANNEL_2_PIN               PC2
